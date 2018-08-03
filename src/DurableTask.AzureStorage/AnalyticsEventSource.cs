@@ -369,7 +369,7 @@ namespace DurableTask.AzureStorage
         }
 
         [Event(115, Level = EventLevel.Error)]
-        public void TrackingStoreUpdateFailure(
+        public void OrchestrationProcessingFailure(
             string Account,
             string TaskHub,
             string InstanceId,
@@ -388,28 +388,30 @@ namespace DurableTask.AzureStorage
                 ExtensionVersion);
         }
 
-        [Event(120, Level = EventLevel.Informational)]
+        [Event(120, Level = EventLevel.Informational, Version = 2)]
         public void PartitionManagerInfo(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(120, Account, TaskHub, WorkerName ?? string.Empty, Details, ExtensionVersion);
+            this.WriteEvent(120, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details, ExtensionVersion);
         }
 
-        [Event(121, Level = EventLevel.Warning)]
+        [Event(121, Level = EventLevel.Warning, Version = 2)]
         public void PartitionManagerWarning(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(121, Account, TaskHub, WorkerName ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
+            this.WriteEvent(121, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
         }
 
         [NonEvent]
@@ -417,22 +419,24 @@ namespace DurableTask.AzureStorage
             string account,
             string taskHub,
             string workerName,
+            string partitionId,
             Exception exception,
             string ExtensionVersion)
         {
-            this.PartitionManagerError(account, taskHub, workerName, exception.ToString(), ExtensionVersion);
+            this.PartitionManagerError(account, taskHub, workerName, partitionId, exception.ToString(), ExtensionVersion);
         }
 
-        [Event(122, Level = EventLevel.Error)]
+        [Event(122, Level = EventLevel.Error, Version = 2)]
         public void PartitionManagerError(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(122, Account, TaskHub, WorkerName ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
+            this.WriteEvent(122, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
         }
 
         [Event(123, Level = EventLevel.Verbose, Message = "Host '{2}' renewing lease for PartitionId '{3}' with lease token '{4}'.")]

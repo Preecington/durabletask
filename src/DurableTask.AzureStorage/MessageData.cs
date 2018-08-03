@@ -58,6 +58,8 @@ namespace DurableTask.AzureStorage
         [DataMember]
         public string CompressedBlobName { get; set; }
 
+        internal string Id => this.OriginalQueueMessage?.Id;
+
         internal string QueueName { get; set; }
 
         internal CloudQueueMessage OriginalQueueMessage { get; set; }
