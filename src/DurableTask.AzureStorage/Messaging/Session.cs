@@ -69,6 +69,7 @@ namespace DurableTask.AzureStorage.Messaging
                 taskMessage.OrchestrationInstance.ExecutionId,
                 queueMessage.Id,
                 Math.Max(0, (int)DateTimeOffset.UtcNow.Subtract(queueMessage.InsertionTime.Value).TotalMilliseconds),
+                data.SequenceNumber,
                 isExtendedSession,
                 Utils.ExtensionVersion);
         }

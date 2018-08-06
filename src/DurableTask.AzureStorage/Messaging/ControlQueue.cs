@@ -24,6 +24,8 @@ namespace DurableTask.AzureStorage.Messaging
 
     class ControlQueue : TaskHubQueue, IDisposable
     {
+        static readonly List<MessageData> EmptyMessageList = new List<MessageData>();
+
         readonly CancellationTokenSource releaseTokenSource;
         readonly CancellationToken releaseCancellationToken;
 
@@ -44,7 +46,7 @@ namespace DurableTask.AzureStorage.Messaging
 
         protected override TimeSpan MessageVisibilityTimeout => this.settings.ControlQueueVisibilityTimeout;
 
-        public async Task<IEnumerable<MessageData>> GetMessagesAsync(CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<MessageData>> GetMessagesAsync(CancellationToken cancellationToken)
         {
             using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(this.releaseCancellationToken, cancellationToken))
             {
@@ -83,17 +85,22 @@ namespace DurableTask.AzureStorage.Messaging
                                 queueMessage,
                                 this.storageQueue.Name);
 
-                            AzureStorageOrchestrationService.TraceMessageReceived(
-                                messageData,
-                                this.storageAccountName,
-                                this.settings.TaskHubName);
-
                             batchMessages.Add(messageData);
                         });
 
                         this.backoffHelper.Reset();
 
-                        return batchMessages;
+                        // Try to preserve insertion order when processing
+                        IReadOnlyList<MessageData> sortedMessages = batchMessages.OrderBy(m => m, MessageOrderingComparer.Default).ToList();
+                        foreach (MessageData message in sortedMessages)
+                        {
+                            AzureStorageOrchestrationService.TraceMessageReceived(
+                                message,
+                                this.storageAccountName,
+                                this.settings.TaskHubName);
+                        }
+
+                        return sortedMessages;
                     }
                     catch (Exception e)
                     {
@@ -115,7 +122,7 @@ namespace DurableTask.AzureStorage.Messaging
                 }
 
                 this.IsReleased = true;
-                return Enumerable.Empty<MessageData>();
+                return EmptyMessageList;
             }
         }
 
@@ -127,6 +134,36 @@ namespace DurableTask.AzureStorage.Messaging
         public virtual void Dispose()
         {
             this.releaseTokenSource.Dispose();
+        }
+
+        class MessageOrderingComparer : IComparer<MessageData>
+        {
+            public static readonly MessageOrderingComparer Default = new MessageOrderingComparer();
+
+            public int Compare(MessageData x, MessageData y)
+            {
+                // Azure Storage is the ultimate authority on the order in which messages were received.
+                if (x.OriginalQueueMessage.InsertionTime < y.OriginalQueueMessage.InsertionTime)
+                {
+                    return -1;
+                }
+                else if (x.OriginalQueueMessage.InsertionTime > y.OriginalQueueMessage.InsertionTime)
+                {
+                    return 1;
+                }
+
+                // As a tie-breaker, messages will be ordered based on client-side sequence numbers.
+                if (x.SequenceNumber < y.SequenceNumber)
+                {
+                    return -1;
+                }
+                else if (x.SequenceNumber > y.SequenceNumber)
+                {
+                    return 1;
+                }
+
+                return 0;
+            }
         }
     }
 }

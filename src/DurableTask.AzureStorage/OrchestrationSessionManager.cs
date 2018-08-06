@@ -16,7 +16,6 @@ namespace DurableTask.AzureStorage
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
-    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.AzureStorage.Messaging;
@@ -109,8 +108,8 @@ namespace DurableTask.AzureStorage
                     Guid traceActivityId = AzureStorageOrchestrationService.StartNewLogicalTraceScope();
 
                     // This will block until either new messages arrive or the queue is released.
-                    IEnumerable<MessageData> messages = await controlQueue.GetMessagesAsync(cancellationToken);
-                    if (messages.Any())
+                    IReadOnlyList<MessageData> messages = await controlQueue.GetMessagesAsync(cancellationToken);
+                    if (messages.Count > 0)
                     {
                         this.AddMessageToPendingOrchestration(messages, traceActivityId, cancellationToken);
                     }

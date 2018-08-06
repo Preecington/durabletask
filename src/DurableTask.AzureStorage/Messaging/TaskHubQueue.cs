@@ -16,6 +16,7 @@ namespace DurableTask.AzureStorage.Messaging
     using System;
     using System.Runtime.ExceptionServices;
     using System.Text;
+    using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.AzureStorage.Monitoring;
     using DurableTask.Core;
@@ -25,6 +26,8 @@ namespace DurableTask.AzureStorage.Messaging
 
     abstract class TaskHubQueue
     {
+        static long messageSequenceNumber;
+
         protected readonly string storageAccountName;
         protected readonly AzureStorageOrchestrationServiceSettings settings;
         protected readonly AzureStorageOrchestrationServiceStats stats;
@@ -135,6 +138,7 @@ namespace DurableTask.AzureStorage.Messaging
                 instance.InstanceId,
                 instance.ExecutionId,
                 this.storageQueue.Name,
+                message.SequenceNumber,
                 Utils.ExtensionVersion);
 
             try
@@ -213,6 +217,7 @@ namespace DurableTask.AzureStorage.Messaging
                 session.Instance.InstanceId,
                 session.Instance.ExecutionId,
                 this.storageQueue.Name,
+                message.SequenceNumber,
                 Utils.ExtensionVersion);
 
             try
@@ -291,6 +296,8 @@ namespace DurableTask.AzureStorage.Messaging
             Guid outboundTraceActivityId = Guid.NewGuid();
 
             var data = new MessageData(taskMessage, outboundTraceActivityId, queueName);
+            data.SequenceNumber = Interlocked.Increment(ref messageSequenceNumber);
+
             string rawContent = await messageManager.SerializeMessageDataAsync(data);
 
             AnalyticsEventSource.Log.SendingMessage(
@@ -304,6 +311,7 @@ namespace DurableTask.AzureStorage.Messaging
                 data.QueueName /* PartitionId */,
                 taskMessage.OrchestrationInstance.InstanceId,
                 taskMessage.OrchestrationInstance.ExecutionId,
+                data.SequenceNumber,
                 Utils.ExtensionVersion);
 
             return new CloudQueueMessage(rawContent);
