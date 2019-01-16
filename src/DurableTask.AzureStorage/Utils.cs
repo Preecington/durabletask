@@ -16,7 +16,11 @@ namespace DurableTask.AzureStorage
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Core;
+    using DurableTask.Core.History;
 
     static class Utils
     {
@@ -26,15 +30,77 @@ namespace DurableTask.AzureStorage
 
         public static async Task ParallelForEachAsync<TSource>(
             this IEnumerable<TSource> enumerable,
-            Func<TSource, Task> createTask)
+            Func<TSource, Task> action)
         {
-            var tasks = new List<Task>();
+            var tasks = new List<Task>(32);
             foreach (TSource entry in enumerable)
             {
-                tasks.Add(createTask(entry));
+                tasks.Add(action(entry));
             }
 
             await Task.WhenAll(tasks.ToArray());
+        }
+
+        public static async Task ParallelForEachAsync<T>(this IList<T> items, int maxConcurrency, Func<T, Task> action)
+        {
+            using (var semaphore = new SemaphoreSlim(maxConcurrency))
+            {
+                var tasks = new Task[items.Count];
+                for (int i = 0; i < items.Count; i++)
+                {
+                    tasks[i] = InvokeThrottledAction(items[i], action, semaphore);
+                }
+
+                await Task.WhenAll(tasks);
+            }
+        }
+
+        static async Task InvokeThrottledAction<T>(T item, Func<T, Task> action, SemaphoreSlim semaphore)
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                await action(item);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        public static double Next(this Random random, double minValue, double maxValue)
+        {
+            return random.NextDouble() * (maxValue - minValue) + minValue;
+        }
+
+        public static int GetEpisodeNumber(OrchestrationRuntimeState runtimeState)
+        {
+            return GetEpisodeNumber(runtimeState.Events);
+        }
+
+        public static int GetEpisodeNumber(IEnumerable<HistoryEvent> historyEvents)
+        {
+            // DTFx core writes an "OrchestratorStarted" event at the start of each episode.
+            return historyEvents.Count(e => e.EventType == EventType.OrchestratorStarted);
+        }
+
+        public static int GetTaskEventId(HistoryEvent historyEvent)
+        {
+            switch (historyEvent.EventType)
+            {
+                case EventType.TaskCompleted:
+                    return ((TaskCompletedEvent)historyEvent).TaskScheduledId;
+                case EventType.TaskFailed:
+                    return ((TaskFailedEvent)historyEvent).TaskScheduledId;
+                case EventType.SubOrchestrationInstanceCompleted:
+                    return ((SubOrchestrationInstanceCompletedEvent)historyEvent).TaskScheduledId;
+                case EventType.SubOrchestrationInstanceFailed:
+                    return ((SubOrchestrationInstanceFailedEvent)historyEvent).TaskScheduledId;
+                case EventType.TimerFired:
+                    return ((TimerFiredEvent)historyEvent).TimerId;
+                default:
+                    return historyEvent.EventId;
+            }
         }
     }
 }

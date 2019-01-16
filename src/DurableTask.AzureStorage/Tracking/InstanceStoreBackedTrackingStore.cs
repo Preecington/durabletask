@@ -24,7 +24,6 @@ namespace DurableTask.AzureStorage.Tracking
 
     class InstanceStoreBackedTrackingStore : TrackingStoreBase
     {
-
         readonly IOrchestrationServiceInstanceStore instanceStore;
 
         /// <inheritdoc />
@@ -45,17 +44,8 @@ namespace DurableTask.AzureStorage.Tracking
             return this.instanceStore.DeleteStoreAsync();
         }
 
-        /// <summary>
-        /// Instance Store Does not Support this currently
-        /// </summary>
-        /// <returns></returns>
-        public override Task<bool> ExistsAsync()
-        {
-            throw new NotSupportedException();
-        }
-
         /// <inheritdoc />
-        public override async Task<IList<HistoryEvent>> GetHistoryEventsAsync(string instanceId, string expectedExecutionId, CancellationToken cancellationToken = default(CancellationToken))
+        public override async Task<OrchestrationHistory> GetHistoryEventsAsync(string instanceId, string expectedExecutionId, CancellationToken cancellationToken = default(CancellationToken))
         {
             //If no execution Id is provided get the latest executionId by getting the latest state
             if (expectedExecutionId == null)
@@ -67,23 +57,23 @@ namespace DurableTask.AzureStorage.Tracking
 
             if (events == null || !events.Any())
             {
-                return EmptyHistoryEventList;
+                return new OrchestrationHistory(EmptyHistoryEventList);
             }
             else
             {
-                return events.Select(x => x.HistoryEvent).ToList();
+                return new OrchestrationHistory(events.Select(x => x.HistoryEvent).ToList());
             }
         }
 
         /// <inheritdoc />
-        public override async Task<IList<OrchestrationState>> GetStateAsync(string instanceId, bool allExecutions)
+        public override async Task<IList<OrchestrationState>> GetStateAsync(string instanceId, bool allExecutions, bool fetchInput = true)
         {
             IEnumerable<OrchestrationStateInstanceEntity> states = await instanceStore.GetOrchestrationStateAsync(instanceId, allExecutions);
             return states?.Select(s => s.State).ToList() ?? new List<OrchestrationState>();
         }
 
         /// <inheritdoc />
-        public override async Task<OrchestrationState> GetStateAsync(string instanceId, string executionId)
+        public override async Task<OrchestrationState> GetStateAsync(string instanceId, string executionId, bool fetchInput = true)
         {
             if (executionId == null)
             {
@@ -96,19 +86,16 @@ namespace DurableTask.AzureStorage.Tracking
         }
 
         /// <inheritdoc />
-        public override Task<IList<OrchestrationState>> GetStateAsync(CancellationToken cancellationToken = default(CancellationToken))
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc />
         public override Task PurgeHistoryAsync(DateTime thresholdDateTimeUtc, OrchestrationStateTimeRangeFilterType timeRangeFilterType)
         {
             return instanceStore.PurgeOrchestrationHistoryEventsAsync(thresholdDateTimeUtc, timeRangeFilterType);
         }
 
         /// <inheritdoc />
-        public override async Task SetNewExecutionAsync(ExecutionStartedEvent executionStartedEvent)
+        public override async Task<bool> SetNewExecutionAsync(
+            ExecutionStartedEvent executionStartedEvent,
+            bool ignoreExistingInstances /* not used */,
+            string inputStatusOverride)
         {
             var orchestrationState = new OrchestrationState()
             {
@@ -116,7 +103,7 @@ namespace DurableTask.AzureStorage.Tracking
                 Version = executionStartedEvent.Version,
                 OrchestrationInstance = executionStartedEvent.OrchestrationInstance,
                 OrchestrationStatus = OrchestrationStatus.Pending,
-                Input = executionStartedEvent.Input,
+                Input = inputStatusOverride ?? executionStartedEvent.Input,
                 Tags = executionStartedEvent.Tags,
                 CreatedTime = executionStartedEvent.Timestamp,
                 LastUpdatedTime = DateTime.UtcNow,
@@ -130,6 +117,7 @@ namespace DurableTask.AzureStorage.Tracking
             };
 
             await this.instanceStore.WriteEntitiesAsync(new[] { orchestrationStateEntity });
+            return true;
         }
 
         /// <inheritdoc />
@@ -140,7 +128,7 @@ namespace DurableTask.AzureStorage.Tracking
         }
 
         /// <inheritdoc />
-        public override async Task UpdateStateAsync(OrchestrationRuntimeState runtimeState, string instanceId, string executionId)
+        public override async Task<string> UpdateStateAsync(OrchestrationRuntimeState runtimeState, string instanceId, string executionId, string eTag)
         {
             int oldEventsCount = (runtimeState.Events.Count - runtimeState.NewEvents.Count);
             await instanceStore.WriteEntitiesAsync(runtimeState.NewEvents.Select((x, i) =>
@@ -164,6 +152,8 @@ namespace DurableTask.AzureStorage.Tracking
                         SequenceNumber = runtimeState.Events.Count
                     }
             });
+
+            return null;
         }
     }
 }

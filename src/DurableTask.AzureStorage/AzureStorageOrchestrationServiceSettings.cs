@@ -87,6 +87,17 @@ namespace DurableTask.AzureStorage
         public int MaxConcurrentTaskOrchestrationWorkItems { get; set; } = 100;
 
         /// <summary>
+        /// Gets or sets the maximum number of concurrent storage operations that can be executed in the context
+        /// of a single orchestration instance.
+        /// </summary>
+        public int MaxStorageOperationConcurrency { get; set; } = Environment.ProcessorCount * 25;
+
+        /// <summary>
+        /// Gets the maximum number of orchestrator actions to checkpoint at a time.
+        /// </summary>
+        public int MaxCheckpointBatchSize { get; set; }
+
+        /// <summary>
         /// Gets or sets the identifier for the current worker.
         /// </summary>
         public string WorkerId { get; set; } = Environment.MachineName;
@@ -122,5 +133,11 @@ namespace DurableTask.AzureStorage
         /// interval, it will cause it to expire and ownership of the partition will move to another worker instance.
         /// </summary>
         public TimeSpan LeaseInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Gets or sets the Azure Storage Account details
+        /// If provided, this is used to connect to Azure Storage
+        /// </summary>
+        public StorageAccountDetails StorageAccountDetails { get; set; }
     }
 }

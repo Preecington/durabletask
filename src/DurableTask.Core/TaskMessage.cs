@@ -13,7 +13,6 @@
 
 namespace DurableTask.Core
 {
-    using System;
     using System.Runtime.Serialization;
     using DurableTask.Core.History;
 
@@ -24,19 +23,22 @@ namespace DurableTask.Core
     public class TaskMessage : IExtensibleDataObject
     {
         /// <summary>
-        /// Even information for this taks message
+        /// Event information for this task message
         /// </summary>
-        [DataMember] public HistoryEvent Event;
+        [DataMember]
+        public HistoryEvent Event;
 
         /// <summary>
         /// Sequence number for ordering of messages in history tracking
         /// </summary>
-        [DataMember] public long SequenceNumber;
+        [DataMember]
+        public long SequenceNumber;
 
         /// <summary>
         /// The orchestration instance information
         /// </summary>
-        [DataMember] public OrchestrationInstance OrchestrationInstance;
+        [DataMember]
+        public OrchestrationInstance OrchestrationInstance;
 
         /// <summary>
         /// Implementation for <see cref="IExtensibleDataObject.ExtensionData"/>.

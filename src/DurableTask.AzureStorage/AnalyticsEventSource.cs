@@ -14,8 +14,11 @@
 namespace DurableTask.AzureStorage
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics.Tracing;
+    using System.Linq;
     using System.Threading;
+    using DurableTask.Core;
 
     /// <summary>
     /// ETW Event Provider for the DurableTask.AzureStorage provider extension.
@@ -72,18 +75,21 @@ namespace DurableTask.AzureStorage
 #endif
         }
 
-        [Event(101, Level = EventLevel.Informational, Opcode = EventOpcode.Send, Task = Tasks.Enqueue, Version = 2)]
+        [Event(101, Level = EventLevel.Informational, Opcode = EventOpcode.Send, Task = Tasks.Enqueue, Version = 5)]
         public void SendingMessage(
             Guid relatedActivityId,
             string Account,
             string TaskHub,
             string EventType,
+            int TaskEventId,
             string InstanceId,
             string ExecutionId,
             long SizeInBytes,
             string PartitionId,
             string TargetInstanceId,
             string TargetExecutionId,
+            long SequenceNumber,
+            int Episode,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
@@ -93,21 +99,25 @@ namespace DurableTask.AzureStorage
                 Account,
                 TaskHub,
                 EventType,
+                TaskEventId,
                 InstanceId ?? string.Empty,
                 ExecutionId ?? string.Empty,
                 SizeInBytes,
                 PartitionId,
                 TargetInstanceId,
                 TargetExecutionId ?? string.Empty,
+                SequenceNumber,
+                Episode,
                 ExtensionVersion);
         }
 
-        [Event(102, Level = EventLevel.Informational, Opcode = EventOpcode.Receive, Task = Tasks.Dequeue, Version = 2)]
+        [Event(102, Level = EventLevel.Informational, Opcode = EventOpcode.Receive, Task = Tasks.Dequeue, Version = 5)]
         public void ReceivedMessage(
             Guid relatedActivityId,
             string Account,
             string TaskHub,
             string EventType,
+            int TaskEventId,
             string InstanceId,
             string ExecutionId,
             string MessageId,
@@ -116,6 +126,8 @@ namespace DurableTask.AzureStorage
             string NextVisibleTime,
             long SizeInBytes,
             string PartitionId,
+            long SequenceNumber,
+            int Episode,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
@@ -125,6 +137,7 @@ namespace DurableTask.AzureStorage
                 Account,
                 TaskHub,
                 EventType,
+                TaskEventId,
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 MessageId,
@@ -133,18 +146,22 @@ namespace DurableTask.AzureStorage
                 NextVisibleTime,
                 SizeInBytes,
                 PartitionId,
+                SequenceNumber,
+                Episode,
                 ExtensionVersion);
         }
 
-        [Event(103, Level = EventLevel.Informational, Version = 2)]
+        [Event(103, Level = EventLevel.Informational, Version = 4)]
         public void DeletingMessage(
             string Account,
             string TaskHub,
             string EventType,
+            int TaskEventId,
             string MessageId,
             string InstanceId,
             string ExecutionId,
             string PartitionId,
+            long SequenceNumber,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
@@ -153,22 +170,27 @@ namespace DurableTask.AzureStorage
                 Account,
                 TaskHub,
                 EventType,
+                TaskEventId,
                 MessageId,
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 PartitionId,
+                SequenceNumber,
                 ExtensionVersion);
         }
 
-        [Event(104, Level = EventLevel.Warning, Message = "Abandoning message of type {2} with ID = {3}. Orchestration ID = {4}.", Version = 2)]
+        [Event(104, Level = EventLevel.Warning, Version = 5)]
         public void AbandoningMessage(
             string Account,
             string TaskHub,
             string EventType,
+            int TaskEventId,
             string MessageId,
             string InstanceId,
             string ExecutionId,
             string PartitionId,
+            long SequenceNumber,
+            int VisibilityTimeoutSeconds,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
@@ -177,14 +199,17 @@ namespace DurableTask.AzureStorage
                 Account,
                 TaskHub,
                 EventType,
+                TaskEventId,
                 MessageId,
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 PartitionId,
+                SequenceNumber,
+                VisibilityTimeoutSeconds,
                 ExtensionVersion);
         }
 
-        [Event(105, Level = EventLevel.Warning, Message = "An unexpected condition was detected: {0}")]
+        [Event(105, Level = EventLevel.Warning, Message = "An unexpected condition was detected: {2}")]
         public void AssertFailure(
             string Account,
             string TaskHub,
@@ -195,7 +220,7 @@ namespace DurableTask.AzureStorage
             this.WriteEvent(105, Account, TaskHub, Details, ExtensionVersion);
         }
 
-        [Event(106, Level = EventLevel.Warning, Version = 2)]
+        [Event(106, Level = EventLevel.Warning, Version = 3)]
         public void MessageGone(
             string Account,
             string TaskHub,
@@ -203,11 +228,24 @@ namespace DurableTask.AzureStorage
             string InstanceId,
             string ExecutionId,
             string PartitionId,
+            string EventType,
+            int TaskEventId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(106, Account, TaskHub, MessageId, InstanceId, ExecutionId ?? string.Empty, PartitionId, Details, ExtensionVersion);
+            this.WriteEvent(
+                106,
+                Account,
+                TaskHub,
+                MessageId,
+                InstanceId,
+                ExecutionId ?? string.Empty,
+                PartitionId,
+                EventType,
+                TaskEventId,
+                Details,
+                ExtensionVersion);
         }
 
         [Event(107, Level = EventLevel.Error)]
@@ -217,25 +255,62 @@ namespace DurableTask.AzureStorage
             this.WriteEvent(107, Account, TaskHub, Details, ExtensionVersion);
         }
 
-        [Event(108, Level = EventLevel.Warning, Message = "A duplicate message was detected. This can indicate a potential performance problem. Message ID = '{2}'. DequeueCount = {3}.")]
+        [Event(108, Level = EventLevel.Warning, Version = 2, Message = "A duplicate message was detected. This can indicate a potential performance problem. Message ID = '{2}'. DequeueCount = {3}.")]
         public void DuplicateMessageDetected(
             string Account,
             string TaskHub,
             string MessageId,
+            string InstanceId,
+            string ExecutionId,
+            string PartitionId,
             int DequeueCount,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(108, Account, TaskHub, MessageId, DequeueCount, ExtensionVersion);
+            this.WriteEvent(
+                108,
+                Account,
+                TaskHub,
+                MessageId,
+                InstanceId,
+                ExecutionId ?? string.Empty,
+                PartitionId,
+                DequeueCount,
+                ExtensionVersion);
         }
 
-        [Event(110, Level = EventLevel.Informational)]
+        [Event(109, Level = EventLevel.Warning, Message = "A poison message was detected! Message ID = '{2}'. DequeueCount = {6}.")]
+        public void PoisonMessageDetected(
+            string Account,
+            string TaskHub,
+            string MessageId,
+            string InstanceId,
+            string ExecutionId,
+            string PartitionId,
+            int DequeueCount,
+            string ExtensionVersion)
+        {
+            EnsureLogicalTraceActivityId();
+            this.WriteEvent(
+                109,
+                Account,
+                TaskHub,
+                MessageId,
+                InstanceId,
+                ExecutionId ?? string.Empty,
+                PartitionId,
+                DequeueCount,
+                ExtensionVersion);
+        }
+
+        [Event(110, Level = EventLevel.Informational, Version = 2)]
         public void FetchedInstanceHistory(
             string Account,
             string TaskHub,
             string InstanceId,
             string ExecutionId,
             int EventCount,
+            int Episode,
             int RequestCount,
             long LatencyMs,
             string ETag,
@@ -249,13 +324,14 @@ namespace DurableTask.AzureStorage
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 EventCount,
+                Episode,
                 RequestCount,
                 LatencyMs,
                 ETag ?? string.Empty,
                 ExtensionVersion);
         }
 
-        [Event(111, Level = EventLevel.Informational, Version = 2)]
+        [Event(111, Level = EventLevel.Informational, Version = 3)]
         public void AppendedInstanceHistory(
             string Account,
             string TaskHub,
@@ -264,6 +340,7 @@ namespace DurableTask.AzureStorage
             int NewEventCount,
             int TotalEventCount,
             string NewEvents,
+            int Episode,
             long LatencyMs,
             int SizeInBytes,
             string ETag,
@@ -279,6 +356,7 @@ namespace DurableTask.AzureStorage
                 NewEventCount,
                 TotalEventCount,
                 NewEvents,
+                Episode,
                 LatencyMs,
                 SizeInBytes,
                 ETag ?? string.Empty,
@@ -318,7 +396,7 @@ namespace DurableTask.AzureStorage
                 ExtensionVersion);
         }
 
-        [Event(113, Level = EventLevel.Informational)]
+        [Event(113, Level = EventLevel.Informational, Version = 2)]
         public void RenewingMessage(
             string Account,
             string TaskHub,
@@ -326,6 +404,7 @@ namespace DurableTask.AzureStorage
             string ExecutionId,
             string PartitionId,
             string EventType,
+            int TaskEventId,
             string MessageId,
             int VisibilityTimeoutSeconds,
             string ExtensionVersion)
@@ -339,19 +418,22 @@ namespace DurableTask.AzureStorage
                 ExecutionId ?? string.Empty,
                 PartitionId,
                 EventType,
+                TaskEventId,
                 MessageId,
                 VisibilityTimeoutSeconds,
                 ExtensionVersion);
         }
 
-        [Event(114, Level = EventLevel.Error)]
+        [Event(114, Level = EventLevel.Error, Version = 2)]
         public void MessageFailure(
             string Account,
             string TaskHub,
+            string MessageId,
             string InstanceId,
             string ExecutionId,
             string PartitionId,
             string EventType,
+            int TaskEventId,
             string Details,
             string ExtensionVersion)
         {
@@ -360,16 +442,18 @@ namespace DurableTask.AzureStorage
                 114,
                 Account,
                 TaskHub,
+                MessageId,
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 PartitionId,
                 EventType,
+                TaskEventId,
                 Details,
                 ExtensionVersion);
         }
 
         [Event(115, Level = EventLevel.Error)]
-        public void TrackingStoreUpdateFailure(
+        public void OrchestrationProcessingFailure(
             string Account,
             string TaskHub,
             string InstanceId,
@@ -388,28 +472,90 @@ namespace DurableTask.AzureStorage
                 ExtensionVersion);
         }
 
-        [Event(120, Level = EventLevel.Informational)]
+        [Event(116, Level = EventLevel.Informational)]
+        public void PendingOrchestratorMessageLimitReached(
+            string Account,
+            string TaskHub,
+            long PendingOrchestratorMessages,
+            string ExtensionVersion)
+        {
+            EnsureLogicalTraceActivityId();
+            this.WriteEvent(
+                116,
+                Account,
+                TaskHub,
+                PendingOrchestratorMessages,
+                ExtensionVersion);
+        }
+
+        [Event(117, Level = EventLevel.Informational)]
+        public void WaitingForMoreMessages(
+            string Account,
+            string TaskHub,
+            string PartitionId,
+            string ExtensionVersion)
+        {
+            EnsureLogicalTraceActivityId();
+            this.WriteEvent(
+                117,
+                Account,
+                TaskHub,
+                PartitionId,
+                ExtensionVersion);
+        }
+
+        [Event(118, Level = EventLevel.Warning, Version = 2)]
+        public void ReceivedOutOfOrderMessage(
+            string Account,
+            string TaskHub,
+            string InstanceId,
+            string ExecutionId,
+            string PartitionId,
+            string EventType,
+            int TaskEventId,
+            string MessageId,
+            int Episode,
+            string ExtensionVersion)
+        {
+            EnsureLogicalTraceActivityId();
+            this.WriteEvent(
+                118,
+                Account,
+                TaskHub,
+                InstanceId,
+                ExecutionId ?? string.Empty,
+                PartitionId,
+                EventType,
+                TaskEventId,
+                MessageId,
+                Episode,
+                ExtensionVersion);
+        }
+
+        [Event(120, Level = EventLevel.Informational, Version = 2)]
         public void PartitionManagerInfo(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(120, Account, TaskHub, WorkerName ?? string.Empty, Details, ExtensionVersion);
+            this.WriteEvent(120, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details, ExtensionVersion);
         }
 
-        [Event(121, Level = EventLevel.Warning)]
+        [Event(121, Level = EventLevel.Warning, Version = 2)]
         public void PartitionManagerWarning(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(121, Account, TaskHub, WorkerName ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
+            this.WriteEvent(121, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
         }
 
         [NonEvent]
@@ -417,22 +563,24 @@ namespace DurableTask.AzureStorage
             string account,
             string taskHub,
             string workerName,
+            string partitionId,
             Exception exception,
             string ExtensionVersion)
         {
-            this.PartitionManagerError(account, taskHub, workerName, exception.ToString(), ExtensionVersion);
+            this.PartitionManagerError(account, taskHub, workerName, partitionId, exception.ToString(), ExtensionVersion);
         }
 
-        [Event(122, Level = EventLevel.Error)]
+        [Event(122, Level = EventLevel.Error, Version = 2)]
         public void PartitionManagerError(
             string Account,
             string TaskHub,
             string WorkerName,
+            string PartitionId,
             string Details,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(122, Account, TaskHub, WorkerName ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
+            this.WriteEvent(122, Account, TaskHub, WorkerName ?? string.Empty, PartitionId ?? string.Empty, Details ?? string.Empty, ExtensionVersion);
         }
 
         [Event(123, Level = EventLevel.Verbose, Message = "Host '{2}' renewing lease for PartitionId '{3}' with lease token '{4}'.")]
@@ -649,18 +797,28 @@ namespace DurableTask.AzureStorage
                 ExtensionVersion);
         }
 
-        [Event(135, Level = EventLevel.Informational)]
+        [Event(135, Level = EventLevel.Informational, Version = 2)]
         public void InstanceStatusUpdate(
             string Account,
             string TaskHub,
             string InstanceId,
             string ExecutionId,
             string EventType,
+            int Episode,
             long LatencyMs,
             string ExtensionVersion)
         {
             EnsureLogicalTraceActivityId();
-            this.WriteEvent(135, Account, TaskHub, InstanceId, ExecutionId ?? string.Empty, EventType, LatencyMs, ExtensionVersion);
+            this.WriteEvent(
+                135,
+                Account,
+                TaskHub,
+                InstanceId,
+                ExecutionId ?? string.Empty,
+                EventType,
+                Episode,
+                LatencyMs,
+                ExtensionVersion);
         }
 
         [Event(136, Level = EventLevel.Informational)]
@@ -737,16 +895,19 @@ namespace DurableTask.AzureStorage
                 ExtensionVersion);
         }
 
-        [Event(140, Level = EventLevel.Informational, Task = Tasks.Processing, Opcode = EventOpcode.Receive)]
+        [Event(140, Level = EventLevel.Informational, Task = Tasks.Processing, Opcode = EventOpcode.Receive, Version = 4)]
         public void ProcessingMessage(
             Guid relatedActivityId,
             string Account,
             string TaskHub,
             string EventType,
+            int TaskEventId,
             string InstanceId,
             string ExecutionId,
             string MessageId,
             int Age,
+            long SequenceNumber,
+            int Episode,
             bool IsExtendedSession,
             string ExtensionVersion)
         {
@@ -757,11 +918,40 @@ namespace DurableTask.AzureStorage
                 Account,
                 TaskHub,
                 EventType,
+                TaskEventId,
                 InstanceId,
                 ExecutionId ?? string.Empty,
                 MessageId,
                 Age,
+                SequenceNumber,
+                Episode,
                 IsExtendedSession,
+                ExtensionVersion);
+        }
+
+        [Event(141, Level = EventLevel.Informational)]
+        public void PurgeInstanceHistory(
+            string Account,
+            string TaskHub,
+            string InstanceId,
+            string createdTimeFrom,
+            string createdTimeTo,
+            string runtimeStatus,
+            int RequestCount,
+            long LatencyMs,
+            string ExtensionVersion)
+        {
+            EnsureLogicalTraceActivityId();
+            this.WriteEvent(
+                141,
+                Account,
+                TaskHub,
+                InstanceId,
+                createdTimeFrom,
+                createdTimeTo,
+                runtimeStatus,
+                RequestCount,
+                LatencyMs,
                 ExtensionVersion);
         }
 

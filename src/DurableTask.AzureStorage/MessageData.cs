@@ -27,11 +27,12 @@ namespace DurableTask.AzureStorage
         /// <summary>
         /// The MessageData object.
         /// </summary>
-        public MessageData(TaskMessage message, Guid activityId, string queueName)
+        public MessageData(TaskMessage message, Guid activityId, string queueName, int orchestrationEpisode)
         {
             this.TaskMessage = message;
             this.ActivityId = activityId;
             this.QueueName = queueName;
+            this.Episode = orchestrationEpisode;
         }
 
         /// <summary>
@@ -57,6 +58,24 @@ namespace DurableTask.AzureStorage
         /// </summary>
         [DataMember]
         public string CompressedBlobName { get; set; }
+
+        /// <summary>
+        /// The client-side sequence number of the message.
+        /// </summary>
+        [DataMember]
+        public long SequenceNumber { get; set; }
+
+        /// <summary>
+        /// The episode number of the orchestration which created this message.
+        /// </summary>
+        /// <remarks>
+        /// This value may be <c>0</c> if the orchestration instance that created
+        /// the message was started before episode numbers were tracked.
+        /// </remarks>
+        [DataMember]
+        public int Episode { get; private set; }
+
+        internal string Id => this.OriginalQueueMessage?.Id;
 
         internal string QueueName { get; set; }
 
